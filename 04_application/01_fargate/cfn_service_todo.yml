@@ -1,0 +1,161 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Setup Fargate service
+
+Parameters:
+  ProjectName:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "The ID of the VPC to deploy into"
+  PublicSubnetIds:
+    Type: "List<AWS::EC2::Subnet::Id>"
+    Description: "A comma-separated list of at least two public subnet IDs"
+  PermissionsBoundary:
+    Type: String
+    Description: "The ARN of the policy to use as the permissions boundary for IAM roles"
+  ImageTag:
+    Type: String
+    Description: "The tag of the image to deploy"
+  DefaultTargetGroup:
+    Type: String
+    Description: "The ALB default target group"
+  ServiceName:
+    Description: Name of the service
+    Type: String
+    Default: todo-app
+  ContainerPort:
+    Description: What port number the application inside the docker container is binding to
+    Type: Number
+    Default: 5000
+  DesiredCount:
+    Description: Number of desired container instances
+    Type: Number
+    Default: 1
+  RetentionInDays:
+    Description: Specifies the number of days you want to retain log events
+    Type: Number
+    Default: 3
+
+Resources:
+
+  # This is a role which is used by the ECS tasks themselves.
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub "${ProjectName}-${ServiceName}-ecs-task-exec-role"
+      PermissionsBoundary: !Ref PermissionsBoundary
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub "${ProjectName}-${ServiceName}-ecs-task-role"
+      PermissionsBoundary: !Ref PermissionsBoundary
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-${ServiceName}-dynamodb-policy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-todos"
+
+  ApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ecs/${ProjectName}-${ServiceName}"
+      RetentionInDays: !Ref RetentionInDays
+
+  ApplicationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-${ServiceName}"
+      ExecutionRoleArn: !Ref EcsTaskExecutionRole
+      TaskRoleArn: !Ref EcsTaskRole
+      NetworkMode: awsvpc
+      Cpu: 256
+      Memory: 0.5GB
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectName}/${ServiceName}:${ImageTag}"
+          Essential: true
+          Name: !Sub "${ProjectName}-${ServiceName}"
+          Environment:
+            - Name: CONTAINER_PORT
+              Value: !Ref ContainerPort
+            - Name: TABLE
+              Value: !Sub "${ProjectName}-todos"
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ApplicationLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: !Sub "${ProjectName}-${ServiceName}"
+
+  # https://callable.cloud/docs/gettingstarted-aws-fargate.html
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Callable ECS instance
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          IpProtocol: tcp
+          Description: 'Inbound rule for IPv4 traffic'
+
+  # https://github.com/aws-samples/startup-kit-templates/blob/master/templates/fargate-service.cfn.yml
+  # https://github.com/aws-samples/ecs-refarch-cloudformation/blob/master/services/website-service/service.yaml
+  ApplicationService:
+    Type: AWS::ECS::Service
+    Properties:
+      CapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 1
+      TaskDefinition: !Ref ApplicationTaskDefinition
+      Cluster: !Sub '${ProjectName}-fargate-cluster'
+      ServiceName: !Sub "${ProjectName}-${ServiceName}"
+      DesiredCount: !Ref DesiredCount
+      EnableExecuteCommand: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ContainerSecurityGroup
+          Subnets: !Ref PublicSubnetIds
+      LoadBalancers:
+        - ContainerName: !Sub "${ProjectName}-${ServiceName}"
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref DefaultTargetGroup

@@ -1,0 +1,46 @@
+name: "41 --- [ Test Application ]"
+
+on:
+  workflow_call:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_ACCOUNT_ID: ${{ vars.DEVELOP_ACCOUNT_ID || secrets.DEVELOP_ACCOUNT_ID }}
+
+jobs:
+  validate-cfn-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate Cfn templates
+        uses: ./.github/actions/run-cfn-script
+        with:
+          working-directory: 04_application
+          script-file: ../validate_cfn_templates.sh
+
+  run-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: AWS login
+        uses: ./.github/actions/aws-login
+
+      - name: Run tests
+        working-directory: todo-app
+        run: |
+          uv run pytest

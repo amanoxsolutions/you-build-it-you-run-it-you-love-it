@@ -1,0 +1,35 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Create hosted zone with Route53
+
+Parameters:
+  ProjectName:
+    Type: String
+  RootDomain:
+    Description: The root domain name
+    Type: String
+
+Resources:
+
+  Route53HostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref RootDomain
+      HostedZoneTags:
+        - Key: project
+          Value: !Ref ProjectName
+
+Outputs:
+  Route53HostedZoneId:
+    Value: !Ref Route53HostedZone
+    Export:
+      Name: !Sub "${AWS::StackName}:HostedZoneId"
+  Route53HostedZoneName:
+    Value: !Ref RootDomain
+    Export:
+      Name: !Sub "${AWS::StackName}:HostedZoneName"
+  HostedZoneNameServers:
+    Value: !Join [",", { "Fn::GetAtt": "Route53HostedZone.NameServers" } ]
+    Export:
+      Name: !Sub "${AWS::StackName}:HostedZoneNameServers"

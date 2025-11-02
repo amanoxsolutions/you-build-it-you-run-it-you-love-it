@@ -1,0 +1,16 @@
+name: 'load-dotenv'
+description: 'Load dot-env file'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Load environment variables
+      shell: bash
+      run: |
+        while read -r line || [ -n "$line" ]
+        do
+          if [ -n "$line" ] && [[ "$line" != \#* ]] ; then
+            echo "loading env variable: $line"
+            echo "$line" >> $GITHUB_ENV
+          fi
+        done < "./.env"

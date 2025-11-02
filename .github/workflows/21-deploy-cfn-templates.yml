@@ -1,0 +1,88 @@
+name: "21 --- [ Deploy Cloudformation ]"
+
+on:
+  workflow_call:
+    inputs:
+      stage-env:
+        type: string
+        description: 'Staging environment (DEVELOP|PRODUCTION)'
+        required: true
+      domain-name:
+        type: string
+        description: 'The domain name of the hosted zone (www.company.com)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_ACCOUNT_ID: ${{ secrets[format('{0}_ACCOUNT_ID', inputs.stage-env)] }}
+
+jobs:
+  check-deployment-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      gate-state: ${{ steps.check-gate.outputs.gate-state }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check deployment gate
+        uses: ./.github/actions/check-deployment-gate
+        id: check-gate
+        with:
+          gate-name: 'shared-infra'
+
+  setup-hosted-zone:
+    runs-on: ubuntu-latest
+    needs: [ check-deployment-gate ]
+    if: ${{ needs.check-deployment-gate.outputs.gate-state == 'open' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup hosted zone
+        uses: ./.github/actions/run-cfn-script
+        with:
+          script-file: ./02_shared_infra/01_hosting/cfn_hosted_zone.sh
+          parameters: ${{ vars.ROOT_DOMAIN }}
+
+  setup-ssl-certificate:
+    runs-on: ubuntu-latest
+    needs: [ setup-hosted-zone ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup SSL Certificate
+        uses: ./.github/actions/run-cfn-script
+        with:
+          script-file: ./02_shared_infra/01_hosting/cfn_certificate.sh
+          parameters: ${{ inputs.domain-name }}
+
+  setup-load-balancer:
+    runs-on: ubuntu-latest
+    needs: [ setup-ssl-certificate ]
+    #if: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Load Balancer
+        uses: ./.github/actions/run-cfn-script
+        with:
+          script-file: ./02_shared_infra/02_load_balancer/cfn_alb.sh
+
+  setup-ecs-cluster:
+    runs-on: ubuntu-latest
+    needs: [ check-deployment-gate ]
+    if: ${{ needs.check-deployment-gate.outputs.gate-state == 'open' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup ECS
+        uses: ./.github/actions/run-cfn-script
+        with:
+          script-file: ./02_shared_infra/03_cluster/cfn_ecs_cluster.sh

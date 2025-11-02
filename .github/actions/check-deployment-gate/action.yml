@@ -1,0 +1,62 @@
+name: 'Gate-Keeper'
+description: 'Check deployment gate state using AWS DynamoDB'
+
+inputs:
+  gate-name:
+    description: 'The gate name, should be equal to the service name'
+    required: true
+  aws-region:
+    description: 'the AWS region'
+    required: false
+    default: 'eu-central-1'
+
+outputs:
+  gate-state:
+    description: "The deployment gate state [open|closed]"
+    value: ${{ steps.check-gate.outputs.gate-state }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout with assume
+      uses: ./.github/actions/aws-login
+      with:
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Determine gate state
+      id: check-gate
+      shell: bash
+      run: |
+        GATE_NAME=${{ inputs.gate-name }}
+        GATES_TABLE=${{ env.PROJECT_NAME }}-deployment-gates
+        TABLE_EXISTS=$(aws dynamodb list-tables --query "contains(TableNames, '${GATES_TABLE}')")
+
+        if [ "${TABLE_EXISTS}" == "false" ]; then
+          echo "Missing gates-table, skipping gate check, mark gate as OPEN"
+          echo "gate-state=open" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        ITEM_JSON=$(aws dynamodb get-item \
+            --table-name ${GATES_TABLE} \
+            --key "{\"gate-name\": {\"S\": \"$GATE_NAME\"}}" \
+            --query 'Item.{"gate-name":"gate-name".S, closed:closed.BOOL, reason:reason.S}')
+
+        if [ "${ITEM_JSON}" == "null" ]; then
+
+          aws dynamodb put-item --table-name ${GATES_TABLE} \
+              --item "{\"gate-name\": {\"S\": \"$GATE_NAME\"}, \"closed\": {\"BOOL\": false}, \"reason\": {\"S\": \"\"}}" 
+
+          echo "Missing item gates-name=$GATE_NAME, creating table item, mark gate as OPEN"
+          echo "gate-state=open" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+                
+        echo $ITEM_JSON | jq
+        
+        IS_CLOSED=$(echo ${ITEM_JSON} | jq -r ".closed")
+        GATE_STATE=$([[ $IS_CLOSED == true ]] && echo "CLOSED" || echo "OPEN")
+        echo "Gate is ${GATE_STATE}!"
+        
+        # set Github Action step output
+        echo "gate-state=${GATE_STATE}" >> $GITHUB_OUTPUT

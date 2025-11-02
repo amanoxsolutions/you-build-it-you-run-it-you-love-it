@@ -1,0 +1,38 @@
+name: "40 - CI/CD (Setup Todo-App)  🎯"
+
+on:
+  push:
+    branches: [ main ]
+    # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+    paths:
+      - '.github/actions/**'
+      - '.github/workflows/4[0-9]*'
+      - '04_application/**'
+      - 'todo-app/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run-tests:
+    name: Test
+    uses: ./.github/workflows/41-test-todo-app.yml
+    secrets: inherit
+
+  build-app:
+    name: Build
+    needs: [ run-tests ]
+    uses: ./.github/workflows/42-build-todo-app.yml
+    secrets: inherit
+    with:
+      stage-env: 'DEVELOP'
+
+  deploy-app:
+    name: Develop
+    needs: [ build-app ]
+    uses: ./.github/workflows/43-deploy-todo-app.yml
+    secrets: inherit
+    with:
+      stage-env: 'DEVELOP'

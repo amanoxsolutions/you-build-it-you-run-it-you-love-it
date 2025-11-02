@@ -1,0 +1,27 @@
+name: 'Run Cloudformation Script'
+description: 'Login to AWS and run cfn script'
+
+inputs:
+  script-file:
+    description: 'the bash script file to run'
+    required: true
+  parameters:
+    description: 'optional parameters to pass to the script'
+    required: false
+  working-directory:
+    description: 'the working directory when running the script'
+    default: '.'
+
+
+runs:
+  using: 'composite'
+  steps:
+    - name: AWS Login to AWS
+      uses: ./.github/actions/aws-login
+
+    - name: Run script
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        chmod 744 ${{ inputs.script-file }}
+        ${{ inputs.script-file }} ${{ inputs.parameters }}

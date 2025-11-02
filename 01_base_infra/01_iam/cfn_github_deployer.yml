@@ -1,0 +1,132 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Secure CloudFormation setup for a CI/CD pipeline deployer role that can create IAM roles
+  only when attaching a defined permission boundary.
+
+Parameters:
+  ProjectName:
+    Type: String
+  RepositoryPath:
+    Type: String
+
+  PermissionsBoundaryNameSuffix:
+    Description: The name suffix of the permissions boundary
+    Default: "github-deployer-permission-boundary"
+    Type: String
+
+Resources:
+
+  GithubOidc:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - "0000000000000000000000000000000000000000"
+
+  ###### Permissions Boundary ######
+
+  PermissionsBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: "Deployer Permission Boundary"
+      ManagedPolicyName: !Sub "${ProjectName}-${PermissionsBoundaryNameSuffix}"
+      Path: /
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ExplicitAllows
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:*
+              - cloudformation:*
+              - cloudtrail:*
+              - cloudwatch:*
+              - dynamodb:*
+              - route53:*
+              - lambda:*
+              - logs:*
+              - iam:*
+              - ssm:*
+              - kms:*
+              - acm:*
+              - ec2:*
+              - ecr:*
+              - ecs:*
+              - s3:*
+            Resource: "*"
+          - Sid: RestrictToEuCentral1
+            Effect: Deny
+            NotAction:
+              - route53:*
+              - iam:*
+              - acm:*
+            Resource: "*"
+            Condition:
+              StringNotEquals:
+                aws:RequestedRegion: eu-central-1
+          - Sid: AllowIamActionsForProjectResources
+            Effect: Allow
+            Action:
+              - iam:*
+            Resource:
+              - !Sub "arn:aws:iam::*:policy/${ProjectName}-*"
+              - !Sub "arn:aws:iam::*:role/${ProjectName}-*"
+
+          # Default permissions to prevent privilege escalation
+          - Sid: DenyAccessIfRequiredPermBoundaryIsNotBeingApplied
+            Effect: Deny
+            Action:
+              - iam:CreateUser
+              - iam:CreateRole
+              - iam:PutRolePermissionsBoundary
+              - iam:PutUserPermissionsBoundary
+            Condition:
+              StringNotEquals:
+                iam:PermissionsBoundary: !Sub "arn:aws:iam::${AWS::AccountId}:policy/${ProjectName}-${PermissionsBoundaryNameSuffix}"
+            Resource: "*"
+          - Sid: DenyPermBoundaryIAMPolicyAlteration
+            Effect: Deny
+            Action:
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:SetDefaultPolicyVersion
+            Resource: !Sub "arn:aws:iam::${AWS::AccountId}:policy/${ProjectName}-${PermissionsBoundaryNameSuffix}"
+          - Sid: DenyRemovalOfPermBoundaryFromAnyUserOrRole
+            Effect: Deny
+            Action:
+              - iam:DeleteUserPermissionsBoundary
+              - iam:DeleteRolePermissionsBoundary
+            Resource: "*"
+
+  ###### Roles ######
+
+  GithubDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub "${ProjectName}-github-deployer"
+      PermissionsBoundary: !Ref PermissionsBoundary
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRoleWithWebIdentity
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Condition:
+              "ForAnyValue:StringLike":
+                token.actions.githubusercontent.com:sub:
+                  - !Sub "repo:${RepositoryPath}:*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+Outputs:
+  PermissionsBoundary:
+    Value: !Ref PermissionsBoundary
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", "PermissionsBoundary" ] ]

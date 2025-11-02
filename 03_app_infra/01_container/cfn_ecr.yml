@@ -1,0 +1,81 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Create ECR Docker image registry
+
+Parameters:
+  ProjectName:
+    Type: String
+  ImageName:
+    Type: String
+
+Resources:
+  Repository:
+    Type: "AWS::ECR::Repository"
+    Properties:
+      RepositoryName: !Sub "${ProjectName}/${ImageName}"
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: GithubPush
+            Effect: Allow
+            Principal:
+              AWS: !Ref "AWS::AccountId"
+            Action:
+              - ecr:PutImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+      LifecyclePolicy:
+        # language=json
+        LifecyclePolicyText: >
+          {
+            "rules": [
+              {
+                "rulePriority": 5,
+                "description": "Keep latest image for ever",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": [
+                    "latest"
+                  ],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 1
+                },
+                "action": {
+                  "type": "expire"
+                }
+              },
+              {
+                "rulePriority": 10,
+                "description": "Keep most recent images for 35 days",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": [
+                    "1"
+                  ],
+                  "countType": "sinceImagePushed",
+                  "countNumber": 35,
+                  "countUnit": "days"
+                },
+                "action": {
+                  "type": "expire"
+                }
+              },
+              {
+                "rulePriority": 20,
+                "description": "Remove all untagged images",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 1
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }

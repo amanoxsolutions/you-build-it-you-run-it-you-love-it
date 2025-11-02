@@ -1,0 +1,81 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Setup CIS alarming
+
+Parameters:
+  ProjectName:
+    Type: String
+
+Resources:
+
+# ------------------------------------------------------------------------------------------------------------------------------------
+# CIS AWS Foundations Benchmark - 3.1   Ensure a log metric filter and alarm exist for unauthorized API calls (Scored)
+# ------------------------------------------------------------------------------------------------------------------------------------
+
+  UnauthorizedApiCallsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !ImportValue {"Fn::Sub": "${ProjectName}-cloudtrail:CloudTrailLogGroup"}
+      FilterPattern: |-
+        {
+          ($.errorCode = "*UnauthorizedOperation") ||
+          ($.errorCode = "AccessDenied*")
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: UnauthorizedAttemptCount
+
+  UnauthorizedApiCallsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-unauthorized-api-call" # CIS-Unauthorized Activity Attempt
+      AlarmDescription: Alarm if Multiple unauthorized actions or logins attempted
+      MetricName: UnauthorizedAttemptCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      TreatMissingData: notBreaching
+      #AlarmActions:
+      #  - !Ref AlarmNotificationTopicARN
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+# ------------------------------------------------------------------------------------------------------------------------------------
+# CIS AWS Foundations Benchmark - 1.1   Avoid the use of the "root" account (Scored)
+# CIS AWS Foundations Benchmark - 3.3   Ensure a log metric filter and alarm exist for usage of "root" account  (Scored)
+# ------------------------------------------------------------------------------------------------------------------------------------
+
+  RootAccountLoginsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !ImportValue {"Fn::Sub": "${ProjectName}-cloudtrail:CloudTrailLogGroup"}
+      FilterPattern: |-
+        {
+          $.userIdentity.type = "Root" &&
+          $.userIdentity.invokedBy NOT EXISTS &&
+          $.eventType != "AwsServiceEvent"
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: RootUserEventCount
+
+  RootAccountLoginsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-root-account-login" # CIS-Root Activity
+      AlarmDescription: Alarm if a 'root' user uses the account
+      MetricName: RootUserEventCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      TreatMissingData: notBreaching
+      #AlarmActions:
+      #  - !Ref AlarmNotificationTopicARN
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+

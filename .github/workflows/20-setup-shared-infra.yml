@@ -1,0 +1,42 @@
+name: "20 - CI/CD (Deploy Shared Infra)  🚩"
+
+on:
+  push:
+    branches: [ main ]
+    # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+    paths:
+      - '.github/actions/**'
+      - '.github/workflows/2[0-9]*'
+      - '02_shared_infra/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run-tests:
+    name: Tests
+    uses: ./.github/workflows/91-validate-templates.yml
+    secrets: inherit
+    with:
+      working-directory: 02_shared_infra
+
+  deploy-develop-account:
+    name: Develop
+    needs: [ run-tests ]
+    uses: ./.github/workflows/21-deploy-cfn-templates.yml
+    secrets: inherit
+    with:
+      stage-env: 'DEVELOP'
+      domain-name: ${{ format('dev.{0}', vars.ROOT_DOMAIN) }}
+
+  deploy-production-account:
+    name: Production
+    # if: false
+    needs: [ deploy-develop-account ]
+    uses: ./.github/workflows/21-deploy-cfn-templates.yml
+    secrets: inherit
+    with:
+      stage-env: 'PRODUCTION'
+      domain-name: ${{ format('www.{0}', vars.ROOT_DOMAIN) }}

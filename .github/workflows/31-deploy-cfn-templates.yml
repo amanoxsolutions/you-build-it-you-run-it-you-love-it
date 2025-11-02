@@ -1,0 +1,57 @@
+name: "31 --- [ Deploy Cloudformation ]"
+
+on:
+  workflow_call:
+    inputs:
+      stage-env:
+        type: string
+        description: 'Staging environment (DEVELOP|PRODUCTION)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_ACCOUNT_ID: ${{ secrets[format('{0}_ACCOUNT_ID', inputs.stage-env)] }}
+
+jobs:
+  check-deployment-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      gate-state: ${{ steps.check-gate.outputs.gate-state }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check deployment gate
+        uses: ./.github/actions/check-deployment-gate
+        id: check-gate
+        with:
+          gate-name: 'app-infra'
+
+  setup-ecr:
+    runs-on: ubuntu-latest
+    needs: [ check-deployment-gate ]
+    if: ${{ needs.check-deployment-gate.outputs.gate-state == 'open' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup ECR
+        uses: ./.github/actions/run-cfn-script
+        with:
+          script-file: ./03_app_infra/01_container/cfn_ecr.sh
+
+  setup-dynamodb:
+    runs-on: ubuntu-latest
+    needs: [ check-deployment-gate ]
+    if: ${{ needs.check-deployment-gate.outputs.gate-state == 'open' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup DynamoDB
+        uses: ./.github/actions/run-cfn-script
+        with:
+          script-file: ./03_app_infra/02_dynamodb/cfn_dynamodb.sh

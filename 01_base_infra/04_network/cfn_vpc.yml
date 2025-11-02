@@ -1,0 +1,210 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Create and configure VPC
+
+Resources:
+
+  # Create a VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}
+
+  # Create a public Subnet
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'a']]
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-public-a
+
+  # Create a public Subnet
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.2.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'b']]
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-public-b
+
+  # Create a public Subnet
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.3.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'c']]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-c
+
+  # Create a route table to allow access to internet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-public
+
+  # Create a Route to allow access to internet using an internet gateway
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCInternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Attach Public Route to PublicSubnetA
+  PublicSubnetAPublicRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  # Attach Public Route to PublicSubnetB
+  PublicSubnetBPublicRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  # Attach Public Route to PublicSubnetC
+  PublicSubnetCPublicRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetC
+
+  # Create an Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-igw
+
+  # Attach the internet gateway to the VPC
+  VPCInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: 
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # Create a private Subnet
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.4.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'a']]
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-private-a
+
+  # Create a private Subnet
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.5.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'b']]
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-private-b
+
+  # Create a private Subnet
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.6.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'c']]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-c
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${AWS::StackName}-private
+
+  # Attach Private Route to PrivateSubnetA
+  PrivateSubnetAPrivateRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetA
+
+  # Attach Private Route to PrivateSubnetB
+  PrivateSubnetBPrivateRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetB
+
+  # Attach Private Route to PrivateSubnetC
+  PrivateSubnetCPrivateRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetC
+
+### Outputs
+Outputs:
+  VPC:
+    Description: VPC reference
+    Value: !Ref VPC
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", VPC ] ]
+  PublicSubnetA:
+    Description: Public Subnet A Created for VPC
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PublicSubnetA ] ]
+  PublicSubnetB:
+    Description: Public Subnet B Created for VPC
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PublicSubnetB ] ]
+  PublicSubnetC:
+    Description: Public Subnet C Created for VPC
+    Value: !Ref PublicSubnetC
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PublicSubnetC ] ]
+  PrivateSubnetA:
+    Description: Private Subnet A Created for VPC
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PrivateSubnetA ] ]
+  PrivateSubnetB:
+    Description: Private Subnet B Created for VPC
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PrivateSubnetB ] ]
+  PrivateSubnetC:
+    Description: Private Subnet C Created for VPC
+    Value: !Ref PrivateSubnetC
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PrivateSubnetC ] ]
+  PrivateRouteTable:
+    Description: PrivateRouteTable created for VPC
+    Value: !Ref PrivateRouteTable
+    Export:
+      Name: !Join [ ":", [ !Ref "AWS::StackName", PrivateRouteTable ] ]

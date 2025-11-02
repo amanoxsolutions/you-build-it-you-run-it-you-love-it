@@ -1,0 +1,44 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Create a SSL certificate request.
+
+Parameters:
+  ProjectName:
+    Type: String
+  HostedZoneId:
+    Description: "The ID of the Hosted Zone for the domain in Route 53 (e.g., Z0123456789ABCDEFGHIJ)."
+    Type: String
+  DomainName:
+    Description: "The Domain Name"
+    Type: String
+
+Resources:
+
+  AcmCertificate:
+    Type: "AWS::CertificateManager::Certificate"
+    DeletionPolicy: Delete
+    Properties:
+      DomainName: !Ref DomainName
+#      ValidationMethod: EMAIL
+#      DomainValidationOptions:
+#        - DomainName: !Ref DomainName
+#          ValidationDomain: !Join
+#            - "."
+#            - - !Select [ 1, !Split [ ".", !Ref DomainName ] ]
+#              - !Select [ 2, !Split [ ".", !Ref DomainName ] ]
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+Outputs:
+  AcmCertificate:
+    Description: "AcmCertificateArn"
+    Value: !Ref AcmCertificate
+    Export:
+      Name: !Sub "${AWS::StackName}:AcmCertificateArn"
+  CertificateDomain:
+    Value: !Ref DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}:CertificateDomain"

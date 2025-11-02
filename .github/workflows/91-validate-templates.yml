@@ -1,0 +1,29 @@
+name: "91 --- [ Validate Cfn templates ]"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        description: 'the base directory when running the template validations'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_ACCOUNT_ID: ${{ vars.DEVELOP_ACCOUNT_ID || secrets.DEVELOP_ACCOUNT_ID }}
+
+jobs:
+  validate-cfn-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate Cfn templates
+        uses: ./.github/actions/run-cfn-script
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          script-file: ../validate_cfn_templates.sh

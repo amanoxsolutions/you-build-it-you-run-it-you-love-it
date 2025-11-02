@@ -1,0 +1,21 @@
+name: 'AWS Login with environment setup'
+description: 'load environment vars and login to AWS'
+
+inputs:
+  aws-region:
+    description: 'the AWS region'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Load dot-env file
+      uses: ./.github/actions/load-dotenv
+
+    - name: AWS login
+      uses: aws-actions/configure-aws-credentials@v5
+      with:
+        aws-region: ${{ env.AWS_REGION || inputs.aws-region }}
+        role-to-assume: arn:aws:iam::${{ env.TARGET_ACCOUNT_ID }}:role/${{ env.PROJECT_NAME }}-github-deployer
+        role-duration-seconds: 900
+        role-skip-session-tagging: true

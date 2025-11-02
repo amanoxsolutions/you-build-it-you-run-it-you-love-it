@@ -1,0 +1,110 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Setup AWS CloudTrail for Account monitoring
+
+Parameters:
+  ProjectName:
+    Type: String
+
+Resources:
+
+  # https://github.com/widdix/aws-cf-templates/blob/master/security/cloudtrail.yaml
+  CloudTrailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-cloudtrail-${AWS::AccountId}"
+      PublicAccessBlockConfiguration: # AWS Foundational Security Best Practices v1.0.0 S3.8
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDeletionRule
+            Status: Enabled
+            ExpirationInDays: 30
+
+  TrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: 'cloudtrail.amazonaws.com'
+            Action: 's3:GetBucketAcl'
+            Resource: !Sub 'arn:aws:s3:::${CloudTrailBucket}'
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: 'cloudtrail.amazonaws.com'
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${CloudTrailBucket}/AWSLogs/${AWS::AccountId}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': 'bucket-owner-full-control'
+          - Sid: AllowSSLRequestsOnly # AWS Foundational Security Best Practices v1.0.0 S3.5
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt 'CloudTrailBucket.Arn'
+              - !Sub '${CloudTrailBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
+
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: '/aws/cloudtrail/event-logs'
+      RetentionInDays: 7
+
+  CloudTrailLogGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-cloudtrail-loggroup-role"
+      PermissionsBoundary: !ImportValue {"Fn::Sub": "${ProjectName}-iam-permissions-boundary"}
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: ['sts:AssumeRole']
+            Effect: Allow
+            Principal:
+              Service: [cloudtrail.amazonaws.com]
+      Policies:
+        - PolicyName: 'cloudtrail-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt 'CloudTrailLogGroup.Arn'
+
+  CloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: 'cloudtrail-events'
+      CloudWatchLogsLogGroupArn: !GetAtt CloudTrailLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailLogGroupRole.Arn
+      EnableLogFileValidation: true
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: true
+      S3BucketName: !Ref CloudTrailBucket
+
+
+Outputs:
+  CloudTrailLogGroup:
+    Value: !Ref CloudTrailLogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}:CloudTrailLogGroup"

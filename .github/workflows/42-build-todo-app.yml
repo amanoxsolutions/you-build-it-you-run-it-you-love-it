@@ -1,0 +1,54 @@
+name: "42 --- [ Publish to ECR ]"
+
+on:
+  workflow_call:
+    inputs:
+      stage-env:
+        type: string
+        description: 'Staging environment (DEVELOP|PRODUCTION)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_ACCOUNT_ID: ${{ secrets[format('{0}_ACCOUNT_ID', inputs.stage-env)] }}
+
+jobs:
+  build-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      - name: AWS login
+        uses: ./.github/actions/aws-login
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get short commit hash
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build, tag, and push docker image to Amazon ECR
+        working-directory: todo-app
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: "${{ env.PROJECT_NAME }}/todo-app"
+          IMAGE_TAG: ${{ steps.vars.outputs.sha_short }}
+        run: |
+          # Install uv
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv export --no-hashes --project none -o requirements.txt
+
+          # Run Docker commands
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG -t $REGISTRY/$REPOSITORY:latest .
+          docker push --all-tags $REGISTRY/$REPOSITORY

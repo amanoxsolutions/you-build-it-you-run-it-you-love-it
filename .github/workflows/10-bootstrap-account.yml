@@ -1,0 +1,40 @@
+name: "10 - CI/CD (Bootstrap AWS Account)  🚀"
+
+on:
+  push:
+    branches: [ main ]
+    # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
+    paths:
+      - '.github/actions/**'
+      - '.github/workflows/1[0-9]*'
+      - '01_base_infra/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run-tests:
+    name: Tests
+    uses: ./.github/workflows/91-validate-templates.yml
+    secrets: inherit
+    with:
+      working-directory: 01_base_infra
+
+  deploy-develop-account:
+    name: Develop
+    needs: [ run-tests ]
+    uses: ./.github/workflows/11-deploy-cfn-templates.yml
+    secrets: inherit
+    with:
+      stage-env: 'DEVELOP'
+
+  deploy-production-account:
+    name: Production
+    if: false
+    needs: [ deploy-develop-account ]
+    uses: ./.github/workflows/11-deploy-cfn-templates.yml
+    secrets: inherit
+    with:
+      stage-env: 'PRODUCTION'

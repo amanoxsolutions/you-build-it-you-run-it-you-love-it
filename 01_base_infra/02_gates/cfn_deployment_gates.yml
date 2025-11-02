@@ -1,0 +1,21 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: Deployment Gates setup via DynamoDB
+
+Resources:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-dynamodb-table.html
+  DeploymentGatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref AWS::StackName
+      KeySchema:
+        - AttributeName: gate-name
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: gate-name
+          AttributeType: S
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
