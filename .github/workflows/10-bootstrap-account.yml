@@ -32,7 +32,7 @@ jobs:
 
   deploy-production-account:
     name: Production
-    if: false
+    # if: false
     needs: [ deploy-develop-account ]
     uses: ./.github/workflows/11-deploy-cfn-templates.yml
     secrets: inherit
